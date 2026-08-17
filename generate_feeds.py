@@ -1,11 +1,15 @@
 import os
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo  # Python 3.9+ Standardbibliothek
 import requests
 from feedgen.feed import FeedGenerator
 
 # ==========================================
 # KONFIGURATION & SUCHKRITERIEN
 # ==========================================
+
+# Deutsche Zeitzone definieren (wechselt automatisch zwischen CET und CEST)
+GERMAN_TZ = ZoneInfo("Europe/Berlin")
 
 # Positive Keywords
 KEYWORDS_INCLUDE = [
@@ -107,7 +111,7 @@ def fetch_arbeitsagentur_jobs():
                             "title": f"{title} - {employer} ({location})",
                             "link": f"https://www.arbeitsagentur.de/jobsuche/jobdetail/{refnr}",
                             "description": f"<b>Arbeitgeber:</b> {employer}<br><b>Ort:</b> {location}<br><b>Referenznummer:</b> {refnr}",
-                            "pubDate": datetime.now(timezone.utc),
+                            "pubDate": datetime.now(GERMAN_TZ),
                         }
             else:
                 print(f"Fehler bei Keyword '{kw}': Status {response.status_code}")
@@ -134,7 +138,7 @@ def generate_feed_file(source_name, jobs):
         fe.title(job["title"])
         fe.link(href=job["link"])
         fe.description(job["description"])
-        fe.pubDate(job.get("pubDate", datetime.now(timezone.utc)))
+        fe.pubDate(job.get("pubDate", datetime.now(GERMAN_TZ)))
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     filepath = os.path.join(OUTPUT_DIR, f"{source_name}.xml")
@@ -149,7 +153,7 @@ def generate_opml(source_name):
 <opml version="2.0">
   <head>
     <title>Oeffentlicher Dienst Jobs Subscriptions</title>
-    <dateCreated>{datetime.now(timezone.utc).strftime('%a, %d %b %Y %H:%M:%S GMT')}</dateCreated>
+    <dateCreated>{datetime.now(GERMAN_TZ).strftime("%a, %d %b %Y %H:%M:%S %z")}</dateCreated>
   </head>
   <body>
     <outline text="Karriere Feeds" title="Karriere Feeds">
