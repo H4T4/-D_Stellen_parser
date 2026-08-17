@@ -1,16 +1,13 @@
 import os
-import re
-import urllib.parse
 from datetime import datetime, timezone
 import requests
-from bs4 import BeautifulSoup
 from feedgen.feed import FeedGenerator
 
 # ==========================================
-# KONFIGURATION & SUCHKRITERIEN (Anpassbar)
+# KONFIGURATION & SUCHKRITERIEN
 # ==========================================
 
-# Positive Keywords (OR-Verknüpfung)
+# Positive Keywords
 KEYWORDS_INCLUDE = [
     "Biotechnologie",
     "Gewerbeaufsicht",
@@ -35,8 +32,7 @@ KEYWORDS_EXCLUDE = [
     "Teilzeit",
 ]
 
-# Ziel-Filter für Öffentlichen Dienst
-TARGET_EMPLOYMENT = ["Vollzeit"]
+# Ziel-Filter für Höheren Dienst / Entgeltgruppen (zur optionalen Zusatzprüfung)
 TARGET_CAREER_LEVEL = [
     "Höherer Dienst",
     "h.D.",
@@ -50,33 +46,17 @@ TARGET_CAREER_LEVEL = [
     "A 16",
 ]
 
-# Basiskonfiguration für Ausgabepfad und Host-Domain (wo die XMLs liegen werden)
+# Basiskonfiguration
 OUTPUT_DIR = "public_feeds"
-BASE_URL = "https://H4T4.github.io/-D_Stellen_parser"  # Nach Deployment anpassen!
+BASE_URL = "https://H4T4.github.io/-D_Stellen_parser"
+FEED_NAME = "Arbeitsagentur_Stellensuche"
 
-# Zu durchsuchende Quellen
-SOURCES = [
-    {
-        "name": "Interamt_Stellensuche",
-        "type": "interamt",
-        "url": "https://www.interamt.de/koop/app/treffer?2&angebotstyp=1",  # Suchseite / API
-    },
-    {
-        "name": "Service_Bund_Stellensuche",
-        "type": "service_bund",
-        "url": "https://www.service.bund.de/Content/Globals/Functions/RSSFeed/RSSGenerator_Stellen.xml",
-    },
-    {
-        "name": "RKI_Karriere",
-        "type": "generic_html",
-        "url": "https://www.rki.de/DE/Content/Service/Stellen/stellen_node.html",
-    },
-    {
-        "name": "BfArM_Karriere",
-        "type": "generic_html",
-        "url": "https://www.bfarm.de/DE/Das-BfArM/Karriere/Stellenangebote/_node.html",
-    },
-]
+# Arbeitsagentur API Details
+API_URL = "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v6/jobs"
+HEADERS = {
+    "X-API-Key": "jobboerse-jobsuche",
+    "User-Agent": "PublicSectorJobFeedBot/1.0",
+}
 
 # ==========================================
 # FILTERLOGIK
@@ -91,49 +71,59 @@ def matches_criteria(title: str, description: str) -> bool:
         if ex.lower() in content:
             return False
 
-    # 2. Einschlusssuchstring prüfen (At least 1 keyword match)
-    has_include = any(inc.lower() in content for inc in KEYWORDS_INCLUDE)
-    if not has_include:
-        return False
-
-    # 3. Höherer Dienst / Vollzeit Prüfen (wenn explizit genannt)
-    # Falls weder Teilzeit noch Vollzeit erwähnt wird, lassen wir es im Zweifel zu.
     return True
 
 
 # ==========================================
-# SCRAPING LOGIK
+# API ABFRAGE
 # ==========================================
 
 
-def fetch_service_bund_jobs(source):
-    """Filtert den bestehenden RSS-Feed von service.bund.de nach den Zusatzkriterien."""
-    jobs = []
-    try:
-        response = requests.get(source["url"], timeout=10)
-        soup = BeautifulSoup(response.content, "xml")
+def fetch_arbeitsagentur_jobs():
+    """Fragt die Arbeitsagentur-API für alle Positiv-Keywords ab."""
+    jobs_dict = {}  # Nutzt RefNr als Key gegen Duplikate
 
-        for item in soup.find_all("item"):
-            title = item.title.text if item.title else ""
-            desc = item.description.text if item.description else ""
-            link = item.link.text if item.link else ""
+    for kw in KEYWORDS_INCLUDE:
+        params = {
+            "was": kw,
+            "arbeitszeit": "vz",  # vz = Vollzeit
+            "size": 50,
+        }
 
-            if matches_criteria(title, desc):
-                jobs.append(
-                    {
-                        "title": title,
-                        "link": link,
-                        "description": desc,
-                        "pubDate": datetime.now(timezone.utc),
-                    }
-                )
-    except Exception as e:
-        print(f"Fehler bei {source['name']}: {e}")
-    return jobs
+        try:
+            response = requests.get(API_URL, headers=HEADERS, params=params, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                for job in data.get("stellenangebote", []):
+                    refnr = job.get("refnr")
+                    title = job.get("titel", "Kein Titel")
+                    employer = job.get("arbeitgeber", "Unbekannt")
+                    location = job.get("arbeitsort", {}).get("ort", "")
+                    desc = f"Arbeitgeber: {employer} | Ort: {location} | Keyword: {kw}"
+
+                    # Negativ-Filter anwenden
+                    if matches_criteria(title, desc):
+                        jobs_dict[refnr] = {
+                            "title": f"{title} - {employer} ({location})",
+                            "link": f"https://www.arbeitsagentur.de/jobsuche/jobdetail/{refnr}",
+                            "description": f"<b>Arbeitgeber:</b> {employer}<br><b>Ort:</b> {location}<br><b>Referenznummer:</b> {refnr}",
+                            "pubDate": datetime.now(timezone.utc),
+                        }
+            else:
+                print(f"Fehler bei Keyword '{kw}': Status {response.status_code}")
+        except Exception as e:
+            print(f"Fehler bei Abfrage für '{kw}': {e}")
+
+    return list(jobs_dict.values())
+
+
+# ==========================================
+# FEED & OPML GENERIERUNG
+# ==========================================
 
 
 def generate_feed_file(source_name, jobs):
-    """Erzeugt eine RSS .xml-Datei aus einer Liste von Stellen."""
+    """Erzeugt die RSS .xml-Datei."""
     fg = FeedGenerator()
     fg.title(f"Jobs: {source_name}")
     fg.link(href=f"{BASE_URL}/{source_name}.xml", rel="self")
@@ -149,11 +139,12 @@ def generate_feed_file(source_name, jobs):
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     filepath = os.path.join(OUTPUT_DIR, f"{source_name}.xml")
     fg.rss_file(filepath)
-    print(f"Feed gespeichert: {filepath}")
+    print(f"Feed gespeichert: {filepath} ({len(jobs)} Stellen)")
 
 
-def generate_opml(feed_sources):
-    """Erstellt eine OPML-Datei zum einfachen Import aller Feeds in Fluent Reader."""
+def generate_opml(source_name):
+    """Erstellt die subscriptions.opml Datei für Fluent Reader."""
+    feed_url = f"{BASE_URL}/{source_name}.xml"
     opml_content = f"""<?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0">
   <head>
@@ -162,12 +153,8 @@ def generate_opml(feed_sources):
   </head>
   <body>
     <outline text="Karriere Feeds" title="Karriere Feeds">
-"""
-    for src in feed_sources:
-        feed_url = f"{BASE_URL}/{src['name']}.xml"
-        opml_content += f'      <outline type="rss" text="{src["name"]}" title="{src["name"]}" xmlUrl="{feed_url}" htmlUrl="{src["url"]}"/>\n'
-
-    opml_content += """    </outline>
+      <outline type="rss" text="{source_name}" title="{source_name}" xmlUrl="{feed_url}" htmlUrl="https://www.arbeitsagentur.de/jobsuche/"/>
+    </outline>
   </body>
 </opml>"""
 
@@ -182,17 +169,6 @@ def generate_opml(feed_sources):
 # ==========================================
 
 if __name__ == "__main__":
-    generated_sources = []
-
-    for src in SOURCES:
-        if src["type"] == "service_bund":
-            jobs = fetch_service_bund_jobs(src)
-        else:
-            # Hier können Sie weitere Scraper-Methoden für HTML-Seiten ergänzen
-            jobs = []
-
-        generate_feed_file(src["name"], jobs)
-        generated_sources.append(src)
-
-    # Am Ende die Sammel-OPML-Datei für Fluent Reader erzeugen
-    generate_opml(generated_sources)
+    jobs = fetch_arbeitsagentur_jobs()
+    generate_feed_file(FEED_NAME, jobs)
+    generate_opml(FEED_NAME)
