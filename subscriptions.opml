@@ -2,14 +2,11 @@
 <opml version="2.0">
   <head>
     <title>Oeffentlicher Dienst Jobs Subscriptions</title>
-    <dateCreated>Sun, 16 Aug 2026 14:55:37 GMT</dateCreated>
+    <dateCreated>Mon, 17 Aug 2026 20:08:45 +0200</dateCreated>
   </head>
   <body>
     <outline text="Karriere Feeds" title="Karriere Feeds">
-      <outline type="rss" text="Interamt_Stellensuche" title="Interamt_Stellensuche" xmlUrl="https://H4T4.github.io/-D_Stellen_parser/Interamt_Stellensuche.xml" htmlUrl="https://www.interamt.de/koop/app/treffer?2&angebotstyp=1"/>
-      <outline type="rss" text="Service_Bund_Stellensuche" title="Service_Bund_Stellensuche" xmlUrl="https://H4T4.github.io/-D_Stellen_parser/Service_Bund_Stellensuche.xml" htmlUrl="https://www.service.bund.de/Content/Globals/Functions/RSSFeed/RSSGenerator_Stellen.xml"/>
-      <outline type="rss" text="RKI_Karriere" title="RKI_Karriere" xmlUrl="https://H4T4.github.io/-D_Stellen_parser/RKI_Karriere.xml" htmlUrl="https://www.rki.de/DE/Content/Service/Stellen/stellen_node.html"/>
-      <outline type="rss" text="BfArM_Karriere" title="BfArM_Karriere" xmlUrl="https://H4T4.github.io/-D_Stellen_parser/BfArM_Karriere.xml" htmlUrl="https://www.bfarm.de/DE/Das-BfArM/Karriere/Stellenangebote/_node.html"/>
+      <outline type="rss" text="Arbeitsagentur_Stellensuche" title="Arbeitsagentur_Stellensuche" xmlUrl="https://H4T4.github.io/-D_Stellen_parser/Arbeitsagentur_Stellensuche.xml" htmlUrl="https://www.arbeitsagentur.de/jobsuche/"/>
     </outline>
   </body>
 </opml>
